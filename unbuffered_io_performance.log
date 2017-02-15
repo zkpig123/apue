@@ -1,0 +1,154 @@
+File system block size is 4096
+read, bufsiz:128
+
+real	0m1.247s
+user	0m0.144s
+sys	0m1.100s
+\n
+File system block size is 4096
+read, bufsiz:256
+
+real	0m0.638s
+user	0m0.064s
+sys	0m0.572s
+\n
+File system block size is 4096
+read, bufsiz:512
+
+real	0m0.348s
+user	0m0.024s
+sys	0m0.320s
+\n
+File system block size is 4096
+read, bufsiz:1024
+
+real	0m0.220s
+user	0m0.016s
+sys	0m0.200s
+\n
+File system block size is 4096
+read, bufsiz:2048
+
+real	0m0.175s
+user	0m0.012s
+sys	0m0.160s
+\n
+File system block size is 4096
+read, bufsiz:4096
+
+real	0m0.144s
+user	0m0.004s
+sys	0m0.144s
+\n
+File system block size is 4096
+read, bufsiz:8192
+
+real	0m0.130s
+user	0m0.008s
+sys	0m0.120s
+\n
+File system block size is 4096
+read, bufsiz:16384
+
+real	0m0.123s
+user	0m0.000s
+sys	0m0.120s
+\n
+File system block size is 4096
+read, bufsiz:32768
+
+real	0m0.123s
+user	0m0.000s
+sys	0m0.120s
+\n
+File system block size is 4096
+read, bufsiz:65536
+
+real	0m0.124s
+user	0m0.000s
+sys	0m0.120s
+\n
+File system block size is 4096
+read, bufsiz:131072
+
+real	0m0.124s
+user	0m0.000s
+sys	0m0.124s
+\n
+File system block size is 4096
+write, bufsiz:128
+
+real	0m19.415s
+user	0m0.556s
+sys	0m18.004s
+\n
+File system block size is 4096
+write, bufsiz:256
+
+real	0m13.768s
+user	0m0.312s
+sys	0m9.616s
+\n
+File system block size is 4096
+write, bufsiz:512
+
+real	0m12.485s
+user	0m0.124s
+sys	0m5.512s
+\n
+File system block size is 4096
+write, bufsiz:1024
+
+real	0m12.321s
+user	0m0.096s
+sys	0m3.324s
+\n
+File system block size is 4096
+write, bufsiz:2048
+
+real	0m11.859s
+user	0m0.036s
+sys	0m2.208s
+\n
+File system block size is 4096
+write, bufsiz:4096
+
+real	0m11.443s
+user	0m0.012s
+sys	0m1.560s
+\n
+File system block size is 4096
+write, bufsiz:8192
+
+real	0m11.605s
+user	0m0.008s
+sys	0m1.524s
+\n
+File system block size is 4096
+write, bufsiz:16384
+
+real	0m11.782s
+user	0m0.000s
+sys	0m1.452s
+\n
+File system block size is 4096
+write, bufsiz:32768
+
+real	0m11.412s
+user	0m0.000s
+sys	0m1.408s
+\n
+File system block size is 4096
+write, bufsiz:65536
+
+real	0m11.327s
+user	0m0.000s
+sys	0m1.404s
+\n
+File system block size is 4096
+write, bufsiz:131072
+
+real	0m11.393s
+user	0m0.000s
+sys	0m1.356s
+\n
