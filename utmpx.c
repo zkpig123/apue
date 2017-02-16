@@ -1,3 +1,5 @@
+//POSIX define utmpx.h
+
 #include <utmpx.h>
 #include <stdio.h>
 #include <stdlib.h>
