@@ -1,7 +1,8 @@
 //1.test whether process can change gid of file if 
 //one of process's supplementary gid equal the gid
 //of file.
-//2.usage : progname file group_name_to_change_to
+//2.usage : progname group_name_to_change_to
+//3.conclude:unable
 
 #include "assist.h"
 
