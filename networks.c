@@ -1,3 +1,9 @@
+//1.given network name or network addr,
+//get and print network entry from file
+// /etc/networks, and then print all entries
+//in that file
+//2.usage: progname network_name|network_addr
+
 #include "assist.h"
 
 int get_addr_from_string (char *addr_str, uint32_t *addr)
@@ -48,7 +54,7 @@ int main (int argc, char *argv[])
 	pr_network_item (network_item);
 	printf("\n");
 	printf("now traverse through /etc/networks\n");
-	setnetent(1);
+	setnetent(1); //non zero arg to let file stay open while using getnet* function
 	while ((network_item = getnetent()) != NULL) pr_network_item (network_item);
 	endnetent();
 }
