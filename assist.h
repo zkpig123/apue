@@ -1,6 +1,7 @@
 #ifndef _ASSIST_H_
 #define _ASSIST_H_
 #include <stdio.h>
+#include <setjmp.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <fcntl.h>
