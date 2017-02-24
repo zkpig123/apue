@@ -2,6 +2,8 @@
 #define _ASSIST_H_
 #include <stdio.h>
 #include <setjmp.h>
+#include <sys/wait.h>
+#include <sys/time.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -17,6 +19,8 @@
 #include <arpa/inet.h>
 #include <string.h>
 #include <ctype.h>
+#include <pthread.h>
+#include <sys/resource.h>
 
 void err (const char *s);
 void p_err (const char *s);
