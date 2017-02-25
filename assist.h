@@ -1,6 +1,8 @@
 #ifndef _ASSIST_H_
 #define _ASSIST_H_
+
 #include <stdio.h>
+#include <dirent.h>
 #include <setjmp.h>
 #include <sys/wait.h>
 #include <sys/time.h>
@@ -8,6 +10,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/types.h>
+#include <pwd.h>
 #include <grp.h>
 #include <errno.h>
 #include <netdb.h>
