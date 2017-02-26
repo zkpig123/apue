@@ -25,9 +25,9 @@ int main (int argc, char *argv[])
 	struct tms buf;
 	if (wait(NULL) == -1) p_err("wait child failed.");
 	if (times(&buf) == (clock_t)-1) p_err("times func err.");
-	printf("  real time:%.3f\n", (buf.tms_cutime + buf.tms_cstime) / clock_ticks);
-	printf("  user time:%.3f\n", buf.tms_cutime);
-	printf("system time:%.3f\n", buf.tms_cstime);
+	printf("  real time:%.3f\n", 1.0 * (buf.tms_cutime + buf.tms_cstime) / clock_ticks);
+	printf("  user time:%.3f\n", 1.0 * buf.tms_cutime);
+	printf("system time:%.3f\n", 1.0 * buf.tms_cstime);
 
 	return 0;
 }

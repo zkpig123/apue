@@ -5,7 +5,8 @@
 #include <dirent.h>
 #include <setjmp.h>
 #include <sys/wait.h>
-#include <sys/time.h>
+#include <sys/times.h>
+#include <time.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <fcntl.h>
