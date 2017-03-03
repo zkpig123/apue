@@ -1,4 +1,6 @@
-//conclude: 
+//conclude: if any member of newly orphan group
+//stop, then SIGHUP followed by SIGCONT is sent
+//to every member of that group
 
 #include "assist.h"
 
@@ -29,7 +31,7 @@ int main (void)
 		sleep(3);
 		return 0;
 	}else{
-		kill(getpid(), SIGTSTP);
+		kill(getpid(), SIGTSTP); //alternatively SIGSTOP
 		return 0;
 	}
 
