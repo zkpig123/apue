@@ -8,7 +8,7 @@
 int main (void)
 {
 	int buf[5];
-	int fd = open("test-sigttin", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
+	int fd = open("test-sigttin1", O_CREAT | O_RDWR, S_IRUSR | S_IWUSR);
 	if (fd == -1) p_err("open failed.");
 	errno = 0;
 	char *error;
