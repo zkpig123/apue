@@ -14,6 +14,7 @@ int main (void)
 	memset(&act, 0, sizeof(act));
 	act.sa_handler = sig_handler;
 	if (sigaction(SIGHUP, &act, NULL) == -1) p_err("sigaction 4 SIGHUP failed.");
+	if (sigaction(SIGCONT, &act, NULL) == -1) p_err("sigaction 4 SIGCONT failed.");
 	if (sigaction(SIGTERM, &act, NULL) == -1) p_err("sigaction 4 SIGTERM failed.");
 
 	pid_t pid;
@@ -21,7 +22,7 @@ int main (void)
 	if (pid == 0){
 		pid = getpid();
 		while (2){
-			printf("child 1 (pid:%ld) running.\n");
+			printf("child 1 (pid:%ld) running.\n", pid);
 			sleep(2);
 		}
 		return 0;

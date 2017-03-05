@@ -14,7 +14,8 @@ int main (void)
 	struct sigaction act;
 	memset(&act, 0, sizeof(act));
 	act.sa_handler = sig_handler;
-	if (sigaction(SIGHUP, &act, NULL) == -1) p_err("sigaction 4 SIGTTIN failed.");
+	if (sigaction(SIGHUP, &act, NULL) == -1) p_err("sigaction 4 SIGHUP failed.");
+	if (sigaction(SIGCONT, &act, NULL) == -1) p_err("sigaction 4 SIGCONT failed.");
 
 	pid_t pid;
 	if ((pid = fork()) == -1) p_err("fork 1 err.");
