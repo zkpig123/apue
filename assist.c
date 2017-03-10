@@ -6,9 +6,9 @@ void err (const char *s)
 	exit (1);
 }
 
-void t_err (const char *s, int sig_no)
+void t_err (const char *s, int err_no)
 {
-	fprintf(stderr, "%s errno:%d, error:%s\n", s, sig_no, strerror(sig_no));
+	fprintf(stderr, "%s errno:%d, error:%s\n", s, err_no, strerror(err_no));
 	exit (1);
 }
 

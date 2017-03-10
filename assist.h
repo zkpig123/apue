@@ -26,10 +26,10 @@
 #include <pthread.h>
 #include <sys/resource.h>
 
+void t_err (const char *s, int err_no);
 void err (const char *s);
 void p_err (const char *s);
 void swap_byte (unsigned char *c1, unsigned char *c2);
 int network_to_host (int bytes);
 int vm (void *pos, int bytes);
-void t_err (const char *s, int sig_no);
 #endif
