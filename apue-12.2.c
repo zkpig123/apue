@@ -28,6 +28,16 @@ void unblock_signal (sigset_t *oldmask)
 	pthread_sigmask(SIG_SETMASK, oldmask, NULL);
 }
 
+void my_memcpy(void *dest, void *src, size_t n)
+{
+	char *d, *s;
+	d = dest;
+	s = src;
+	for (int i = 0; i < n; i++){
+		d[i] = s[i];
+	}
+}
+
 static int resize_environ(int first_time)
 {
 	sigset_t oldmask;
@@ -50,7 +60,7 @@ static int resize_environ(int first_time)
 	if (newbuf == NULL) return ALLOC_MEMORY_FAILED;
 	else{
 		if (first_time == 1){
-			memcpy(newbuf, environ, cur_items * sizeof(char*));
+			my_memcpy(newbuf, environ, cur_items * sizeof(char*));
 			char **tmp;
 			tmp = environ;
 			environ = (char**)newbuf;
@@ -81,6 +91,24 @@ static void init (void)
 	}
 }
 
+char *my_strchr (char *str, int target)
+{
+	for (char *ch = str; *ch != '\0'; ch++){
+		if (*ch == target) return ch;
+	}
+	return NULL;
+}
+
+int my_strncmp (char *str1, char *str2, size_t num)
+{
+	int i1, i2;
+	for (i1 = 0, i2 = 0; i1 < num && i2 < num && str1[i1] != '\0' && str2[i2] != '\0'; i1++, i2++){
+		if (str1[i1] < str2[i2]) return -1;
+		else if (str1[i1] > str2[i2]) return 1;
+	}
+	return 0;
+}
+
 int my_putenv_r (char *str)
 {
 	char *equal_sign = NULL;
@@ -88,20 +116,14 @@ int my_putenv_r (char *str)
 	int ret;
 
 	if (str == NULL) return INVALID_ENVIRONMENT_VARIABLE;
-	if ((equal_sign = strchr(str, '=')) == NULL) return INVALID_ENVIRONMENT_VARIABLE;
+	if ((equal_sign = my_strchr(str, '=')) == NULL) return INVALID_ENVIRONMENT_VARIABLE;
 	if ((len = equal_sign - str) == 0) return INVALID_ENVIRONMENT_VARIABLE;
-
-	//////////////////
-	pthread_kill(pthread_self(), SIGQUIT);
 
 	pthread_once(&once, init);
 	if (ret = pthread_mutex_lock(&mutex)) return LOCK_MUTEX_FAILED;
 	size_t target;
 	for (target = 0; environ[target] != NULL; target++){
-		if (strncmp(str, environ[target], len) == 0){
-
-		//////////////////
-		pthread_kill(pthread_self(), SIGQUIT);
+		if (my_strncmp(str, environ[target], len) == 0){
 
 			environ[target] = str;
 			pthread_mutex_unlock(&mutex);
@@ -116,9 +138,6 @@ int my_putenv_r (char *str)
 			return ret;
 		}
 	}
-
-	//////////////////
-	pthread_kill(pthread_self(), SIGQUIT);
 
 	if (cur_items >= max_items){
 		if (ret = resize_environ(0)){
@@ -136,6 +155,7 @@ int my_putenv_r (char *str)
 
 void sig_handler (int signo)
 {
+	int ret;
 	write(STDOUT_FILENO, "in signal handler.\n", sizeof("in signal handler.\n") - 1);
 }
 
@@ -150,7 +170,7 @@ void *thread (void *arg)
 				fprintf(stderr, "thread malloc failed.\n");
 				continue;
 			}
-			sprintf(buf, "XXXXXX%d=%d", i, i);
+			sprintf(buf, "TTTTT%d=%d", i, i);
 			if (ret = my_putenv_r (buf)){
 				fprintf(stderr, "thread put env failed.\n");
 				free(buf);
@@ -162,7 +182,7 @@ void *thread (void *arg)
 		}
 		return 0;
 	}
-	for (int i = 0; i < 100; i++){
+	for (int i = 0; i < 20; i++){
 		pthread_kill(*tid, SIGQUIT);
 	}
 }
@@ -176,21 +196,21 @@ int main (int argc, char *argv[])
 	act.sa_handler = sig_handler;
 	if (sigaction(SIGQUIT, &act, NULL) == -1) t_err("sigaction failed.", ret);
 	if (argc == 1) err("usage: progname environ1 environ2 ... .");
-	printf("print original environ.\n");
+	printf("main print original environ.\n");
 	for (char **ch = environ; *ch != NULL; ch++){
 		printf("%s\n", *ch);
 	}
 	pthread_t tid1, tid2;
-	if (ret = pthread_create(&tid1, NULL, thread, (void*)pthread_self())) t_err("pthread_create failed.", ret);
-	if (ret = pthread_create(&tid2, NULL, thread, (void*)0)) t_err("pthread_create failed.", ret);
+	if (ret = pthread_create(&tid1, NULL, thread, (void*)pthread_self())) t_err("main pthread_create failed.", ret);
+	if (ret = pthread_create(&tid2, NULL, thread, (void*)0)) t_err("main pthread_create failed.", ret);
 	for (int i = 1, success_items = 0; i < argc; i++){
 		if (ret = my_putenv_r (argv[i])){
 			printf("putenv failed, sentence: %s, errno:%d\n", argv[i], ret);
 		}else success_items++;
 	}
-	if (success_items == 0) printf("no environ put success. exit.\n");
+	if (success_items == 0) printf("main no environ put success. exit.\n");
 	for (int i = 0; i < 3; i++) printf("------------------------------------\n");
-	printf("now print environ.\n");
+	printf("main now print environ.\n");
 	for (char **ch = environ; *ch != NULL; ch++){
 		printf("%s\n", *ch);
 	}
