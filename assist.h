@@ -25,6 +25,8 @@
 #include <ctype.h>
 #include <pthread.h>
 #include <sys/resource.h>
+#include <syslog.h>
+#include <sys/stat.h>
 
 void t_err (const char *s, int err_no);
 void err (const char *s);
