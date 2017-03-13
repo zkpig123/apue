@@ -1,8 +1,14 @@
+//conclude: though daemon has no login, on linux we got login name
+//through getlogin...(test from some guys indicated that on 
+//freebsd and Mac OS also could get login name cause login name
+//is maintained in the process table and copied across a fork
+
 #include "assist.h"
 
 #define OPEN_MAX_GUESS 1024
 #define UNIQUE_LOCK_FILE_PATH "/var/run/first_daemon.pid"
 #define UNIQUE_LOCK_FILE_MODE S_IRUSR | S_IWUSR
+#define LOG_FILE_PATH "first_daemon.log"
 
 int lockfile (int fd);
 int unlockfile (int fd);
@@ -114,6 +120,20 @@ int main (void)
 	openlog("first_daemon", LOG_PERROR | LOG_PID, LOG_USER);
 	syslog(LOG_NOTICE, "our first daemon is running now.");
 	syslog(LOG_LOCAL0 || LOG_INFO, "second message from our first daemon is running now.");
+	int fd;
+	if ((fd = open(LOG_FILE_PATH, O_CREAT | O_RDWR, S_IWUSR | S_IRUSR)) == -1){
+		syslog(LOG_ERR, "open log file failed.");
+		exit(16);
+	}
+	char *login;
+	if ((login = getlogin()) == NULL){
+		syslog(LOG_ERR, "getlogin failed.");
+		exit(17);
+	}
+	if (dprintf(fd, "login user is %s\n", login) < 0){
+		syslog(LOG_ERR, "dprintf failed.");
+		exit(18);
+	}
 	while (1);
 
 	//exit cleanup
