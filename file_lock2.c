@@ -8,21 +8,19 @@
 //the implementation might starve processes with pending write locks.
 //just test it.
 
+//conclude:on linux, as apue said!
+
 #include "assist.h"
 
 #define FILE_PATH_TO_LOCK "file_lock2.test"
 #define LOCK_START 5
 #define LOCK_END 10
 
+jmp_buf jmp;
+
 void sig_usr1 (int signo)
 {
 }
-
-void sig_usr2 (int signo)
-{
-	exit(1);
-}
-
 
 int main (void)
 {
@@ -30,8 +28,6 @@ int main (void)
 	memset(&act, 0, sizeof(act));
 	act.sa_handler = sig_usr1;
 	if (sigaction(SIGUSR1, &act, NULL) == -1) p_err("sigaction failed.");
-	act.sa_handler = sig_usr2;
-	if (sigaction(SIGUSR2, &act, NULL) == -1) p_err("sigaction failed.");
 
 	int fd;
 	if ((fd = open(FILE_PATH_TO_LOCK, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR)) == -1) p_err("open failed.");
@@ -44,40 +40,42 @@ int main (void)
 	if (fcntl(fd, F_SETLK, &fl) == -1) p_err("fcntl to set lock failed.");
 	else printf("parent set read lock from pos %ld to %ld.\n", LOCK_START, LOCK_END);
 
-	pid_t pid;
-	if ((pid = fork()) == -1) p_err("fork 1 failed.");
-	if (pid == 0){
+	pid_t pid1, pid2;
+	if ((pid1 = fork()) == -1) p_err("fork 1 failed.");
+	if (pid1 == 0){
 		fl.l_type = F_WRLCK;
-		if (fcntl(fd, F_SETLKW, &fl) == -1) p_err("child1 fcntl to set lock failed.");
+		if (fcntl(fd, F_SETLKW, &fl) == -1){
+			fprintf(stderr, "child1 fcntl to set lock failed, errno:%d, error:%s", errno, strerror(errno));
+			pause();
+		}
 		else printf("child1 write lock from pos %ld to %ld.\n", LOCK_START, LOCK_END);
 		printf("child1 get lock.\n");
 		kill(getppid(), SIGUSR2);
 		exit(0);
 	}
 
-	////////
-	fl.l_type = F_UNLCK;
-	if (fcntl(fd, F_SETLK, &fl) == -1) p_err("parent fcntl to unlock failed.");
-	else printf("parent unlock pos %ld to %ld successful.\n", LOCK_START, LOCK_END);
-	waitpid(pid, NULL, 0);
-	////////
-	
-	if ((pid = fork()) == -1) p_err("fork 2 failed.");
-	if (pid){
-		while (1){
+	if ((pid2 = fork()) == -1) p_err("fork 2 failed.");
+	if (pid2){
+		int i = 0;
+		while (i < 3){
+			i++;
 			pause();
 			sleep(2);
 			fl.l_type = F_UNLCK;
 			if (fcntl(fd, F_SETLK, &fl) == -1) p_err("parent fcntl to unlock failed.");
 			else printf("parent unlock pos %ld to %ld successful.\n", LOCK_START, LOCK_END);
-			kill(pid, SIGUSR1);
+			kill(pid2, SIGUSR1);
 			fl.l_type = F_RDLCK;
 			if (fcntl(fd, F_SETLKW, &fl) == -1) p_err("parent fcntl to set read lock failed.");
 			else printf("parent set read lock from pos %ld to %ld.\n", LOCK_START, LOCK_END);
-			sleep(3);
+			sleep(2);
 		}
+		printf("now kill child2 with SIGTERM.\n");
+		kill(pid2, SIGTERM);
+		fl.l_type = F_UNLCK;
+		if (fcntl(fd, F_SETLK, &fl) == -1) p_err("parent fcntl to unlock failed.");
+		else printf("parent unlock pos %ld to %ld successful.\n", LOCK_START, LOCK_END);
 	}else{
-		return 0;
 		while (1){
 			kill(getppid(), SIGUSR1);
 			fl.l_type = F_RDLCK;
