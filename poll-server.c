@@ -81,63 +81,71 @@ int main (int argc, char *argv[])
 	struct sockaddr_storage client_addr;
 	char client_msg[CLIENT_MESSAGE_MAX_LEN];
 	socklen_t client_addrlen;
-	fd_set fds, read_fds;
-	int read_fd_max, new_fd;
+	int new_fd;
 	client_addrlen = sizeof(client_addr);
-	FD_ZERO(&fds);
-	FD_ZERO(&read_fds);
-	FD_SET(listen_fd, &fds);
 	int ready_num;
-	read_fd_max = listen_fd;
+	struct pollfd *poll_fds = NULL;
+	size_t poll_fds_num;
+	nfds_t nfds; //num of threads in struct pollfd list poll_fds
+	if ((poll_fds = calloc(2, sizeof(struct pollfd) * 2)) == NULL) err("calloc failed.");
+	poll_fds[0].fd = listen_fd;
+	poll_fds[0].events = POLLIN;
+	poll_fds[1].fd = -1;
+	poll_fds_num = 1;
+	nfds = 1;
 	while (1){
-		read_fds = fds;
-		while ((ready_num = select(read_fd_max + 1, &read_fds, NULL, NULL, NULL)) == -1){
+		while ((ready_num = poll(poll_fds, poll_fds_num, -1)) == -1){
 			if (errno == EINTR) continue;
-			else perror("select failed.");
+			else perror("poll failed.");
 		}
-		for (int i = 0; i <= read_fd_max && ready_num > 0; i++){
-			if (FD_ISSET(i, &read_fds)){
+		for (struct pollfd *p = poll_fds; p < poll_fds + poll_fds_num && ready_num > 0; p++){
+			if (p->fd > 0 && p->revents == POLLIN){
 				ready_num--;
-				if (i == listen_fd){
-					if ((new_fd = accept(listen_fd, (struct sockaddr*)&client_addr, &client_addrlen)) == -1){
+				if (p->fd == listen_fd){
+					if ((new_fd = accept(p->fd, (struct sockaddr*)&client_addr, &client_addrlen)) == -1){
 						fprintf(stderr, "accept failed, errno:%d, error:%s\n", errno, strerror(errno));
 						continue;
 					}else{
-						FD_SET(new_fd, &fds);
-						if (new_fd > read_fd_max) read_fd_max = new_fd;
+						if (nfds >= poll_fds_num){
+							poll_fds_num <<= 2;
+							if (realloc(poll_fds, poll_fds_num * sizeof(struct pollfd)) == NULL) err("realloc failed.");
+							struct pollfd *f;
+							for (f = &poll_fds[nfds + 1]; f < &poll_fds[poll_fds_num - 1]; f++){
+								f->fd = -1;
+							}
+							poll_fds[nfds].fd = new_fd;
+							poll_fds[nfds].events = POLLIN;
+							nfds++;
+						}else{
+							struct pollfd *t;
+							for (t = poll_fds; t < poll_fds + poll_fds_num && t->fd != -1; t++) ;
+							t->fd = new_fd;
+							t->events = POLLIN;
+						}
 						printf("select server: new connection from %s on sockfd %d.\n", inet_ntop(client_addr.ss_family, get_in_addr((struct sockaddr*)&client_addr), lexical_addr, INET6_ADDRSTRLEN), new_fd);
 					}
 				}else{
 					ssize_t bytes;
-					if ((bytes = recv(i, client_msg, sizeof(client_msg), 0)) == -1){
+					if ((bytes = recv(p->fd, client_msg, sizeof(client_msg), 0)) == -1){
 						fprintf(stderr, "recv failed, errno:%d, error:%s.\n", errno, strerror(errno));
 					}else if (bytes){
-						printf("msg from client on sock %d: ", i);
+						printf("msg from client on sock %d: ", p->fd);
 						while (write(STDOUT_FILENO, client_msg, bytes) == -1){
 							if (errno == EINTR) continue;
 							else p_err("write client msg to stdout failed.\n");
 						}
 						printf("\n");
 						printf("send to other clients.\n");
-						for (int j = 0; j <= read_fd_max; j++){
-							if (FD_ISSET(j, &fds)){
-								printf("i:%d, j:%d, listen_fd:%d, maxfd:%d.\n", i, j, listen_fd, read_fd_max);
-								if (j != listen_fd && j != i){
-									if (send(j, client_msg, bytes, 0) == -1) fprintf(stderr, "send msg to sock %d failed.\n", j);
-								}else continue;
+						for (struct pollfd *q; q < poll_fds + poll_fds_num; q++){
+							if (q->fd > 0 && q->fd != listen_fd && q->fd != p->fd){
+									if (send(q->fd, client_msg, bytes, 0) == -1) fprintf(stderr, "send msg to sock %d failed.\n", q->fd);
 							}
 						}
 					}else{
-						printf("select server: socket %d hung up.\n", i);
-						if (close(i) == -1) p_err("close socket failed.");
-						FD_CLR(i, &fds);
-						if (i == read_fd_max){
-							i = 0;
-							for (int k = 0; k < read_fd_max; k++){
-								if (k != read_fd_max && FD_ISSET(k, &fds) && k > i) i = k;
-							}
-							read_fd_max = i;
-						}
+						printf("select server: socket %d hung up.\n", p->fd);
+						if (close(p->fd) == -1) p_err("close socket failed.");
+						p->fd = -1;
+						nfds--;
 					}
 				}
 			}

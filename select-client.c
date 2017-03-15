@@ -5,6 +5,7 @@
 
 #define PORT "3838" // the port client will be connecting to 
 #define MAXDATASIZE 100 // max number of bytes we can get at once 
+
 // get sockaddr, IPv4 or IPv6:
 void *get_in_addr(struct sockaddr *sa)
 {
@@ -12,6 +13,33 @@ void *get_in_addr(struct sockaddr *sa)
         return &(((struct sockaddr_in*)sa)->sin_addr);
     }
     return &(((struct sockaddr_in6*)sa)->sin6_addr);
+}
+
+void *thread (void *arg)
+{
+	char buf[MAXDATASIZE];
+	int sockfd = (int)(long)arg;
+	int maxfd = sockfd;
+	fd_set fds, write_fds;
+	FD_ZERO(&fds);
+	FD_SET(sockfd, &fds);
+	ssize_t bytes;
+	while (1){
+		write_fds = fds;
+		while (select(maxfd + 1, NULL, &write_fds, NULL, NULL) == -1){
+			if (errno == EINTR) continue;
+			else p_err("select failed.");
+		}
+		printf("type message to send to server.\n");
+    		while ((bytes = read(STDIN_FILENO, buf, MAXDATASIZE)) == -1){
+			if (errno == EINTR) continue;
+			else p_err("read user input failed.");
+		}
+		while (send(sockfd, buf, bytes, 0) == -1){
+			if (errno == EINTR) continue;
+			else p_err("send failed.");
+		}
+	}
 }
 
 int main(int argc, char *argv[])
@@ -54,58 +82,29 @@ int main(int argc, char *argv[])
             s, sizeof s);
     printf("client: connecting to %s\n", s);
     freeaddrinfo(servinfo); // all done with this structure
-    fd_set fds, read_fds, write_fds;
-    int fd_max, read_ready_num, write_ready_num;
+    fd_set fds, read_fds;
+    int fd_max;
     FD_ZERO(&fds);
     FD_ZERO(&read_fds);
-    FD_ZERO(&write_fds);
-    FD_SET(listen_fd, &fds);
+    FD_SET(sockfd, &fds);
     fd_max = sockfd;
+    pthread_t tid;
+    if (pthread_create(&tid, NULL, thread, (void*)(long)sockfd)) p_err("pthread_create failed.");
     while (1){
 	    read_fds = fds;
-	    write_fds = fds;
 	    ssize_t bytes;
-	    while ((read_ready_num = select(fd_max + 1, &read_fds, &write_fds, NULL, NULL)) == -1){
+	    while (select(fd_max + 1, &read_fds, NULL, NULL, NULL) == -1){
 		    if (errno == EINTR) continue;
 		    else perror("select failed.");
 	    }
-	    write_ready_num = read_ready_num;
-	    for (int i = 0; i <= fd_max && ready_num > 0; i++){
-		    if (FD_ISSET(i, &read_fds)){
-			    read_ready_num--;
-			    if ((bytes = recv(i, buf, MAXDATASIZE, 0)) == -1) p_err("recv failed.");
-			    else if (bytes == 0){
-				    perror("server hung up.\n", i);
-			    }else{
-				    printf("msg from server: ");
-				    for (ssize_t i = 0; i < bytes; i++) printf("%c", buf[i]);
-				    printf("\n");
-			    }
-		    }
-	    }
-	    for (int i = 0; i <= fd_max && write_ready_num > 0; i++){
-		    if (FD_ISSET(i, &write_fds)){
-			    write_ready_num--;
-			    printf("type message to send to server in 3 seconds.");
-		    }
-	    }
-    }
-    /*if ((numbytes = recv(sockfd, buf, MAXDATASIZE-1, 0)) == -1) {
-        perror("recv");
-       exit(1);
-    }
-    buf[numbytes] = '\0';
-    printf("client: received '%s'\n",buf);*/
-    pthread_t tid;
-    if (pthread_create(&tid, NULL, thread, (void*)sockfd)) p_err("pthread_create failed.");
-    while (1){
-	    ssize_t bytes;
-	    printf("type msg to send to server.\n");
-	    while ((bytes = read(STDIN_FILENO, buf, MAXDATASIZE)) == -1 && errno == EINTR) ;
-	    if (bytes == 0) continue;
-	    while (send(sockfd, buf, bytes, 0) == -1){
-		    if (errno == EINTR) continue;
-		    p_err("send failed.");
+	    if ((bytes = recv(sockfd, buf, MAXDATASIZE, 0)) == -1) p_err("recv failed.");
+	    else if (bytes == 0){
+		    perror("server hung up.\n");
+		    exit(0);
+	    }else{
+		    printf("msg from server: ");
+		    for (ssize_t i = 0; i < bytes; i++) printf("%c", buf[i]);
+		    printf("\n");
 	    }
     }
     close(sockfd);
