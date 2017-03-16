@@ -121,7 +121,6 @@ int main (int argc, char *argv[])
 						printf("send to other clients.\n");
 						for (int j = 0; j <= read_fd_max; j++){
 							if (FD_ISSET(j, &fds)){
-								printf("i:%d, j:%d, listen_fd:%d, maxfd:%d.\n", i, j, listen_fd, read_fd_max);
 								if (j != listen_fd && j != i){
 									if (send(j, client_msg, bytes, 0) == -1) fprintf(stderr, "send msg to sock %d failed.\n", j);
 								}else continue;

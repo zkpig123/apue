@@ -4,6 +4,7 @@
 #define CLIENT_MESSAGE_MAX_LEN 512
 #define DEFAULT_PORT "3838"
 #define DEFAULT_ADDR NULL
+#define INITIAL_POLL_FD_NUM 256
 
 void init_addrinfo (struct addrinfo *addr);
 void sig_chld (int signo);
@@ -87,22 +88,22 @@ int main (int argc, char *argv[])
 	struct pollfd *poll_fds = NULL;
 	size_t poll_fds_num;
 	nfds_t nfds; //num of threads in struct pollfd list poll_fds
-	if ((poll_fds = calloc(2, sizeof(struct pollfd) * 2)) == NULL) err("calloc failed.");
+	if ((poll_fds = calloc(INITIAL_POLL_FD_NUM, sizeof(struct pollfd))) == NULL) err("calloc failed.");
+	poll_fds_num = INITIAL_POLL_FD_NUM;
 	poll_fds[0].fd = listen_fd;
 	poll_fds[0].events = POLLIN;
-	poll_fds[1].fd = -1;
-	poll_fds_num = 1;
 	nfds = 1;
+	for (size_t i = 1; i < poll_fds_num; i++) poll_fds[i].fd = -1;
 	while (1){
 		while ((ready_num = poll(poll_fds, poll_fds_num, -1)) == -1){
 			if (errno == EINTR) continue;
 			else perror("poll failed.");
 		}
-		for (struct pollfd *p = poll_fds; p < poll_fds + poll_fds_num && ready_num > 0; p++){
-			if (p->fd > 0 && p->revents == POLLIN){
+		for (struct pollfd *ready_fd = poll_fds; ready_fd < poll_fds + poll_fds_num && ready_num > 0; ready_fd++){
+			if (ready_fd->fd >= 0 && ready_fd->revents){
 				ready_num--;
-				if (p->fd == listen_fd){
-					if ((new_fd = accept(p->fd, (struct sockaddr*)&client_addr, &client_addrlen)) == -1){
+				if (ready_fd->fd == listen_fd){
+					if ((new_fd = accept(ready_fd->fd, (struct sockaddr*)&client_addr, &client_addrlen)) == -1){
 						fprintf(stderr, "accept failed, errno:%d, error:%s\n", errno, strerror(errno));
 						continue;
 					}else{
@@ -114,8 +115,7 @@ int main (int argc, char *argv[])
 								f->fd = -1;
 							}
 							poll_fds[nfds].fd = new_fd;
-							poll_fds[nfds].events = POLLIN;
-							nfds++;
+							poll_fds[nfds++].events = POLLIN;
 						}else{
 							struct pollfd *t;
 							for (t = poll_fds; t < poll_fds + poll_fds_num && t->fd != -1; t++) ;
@@ -126,25 +126,26 @@ int main (int argc, char *argv[])
 					}
 				}else{
 					ssize_t bytes;
-					if ((bytes = recv(p->fd, client_msg, sizeof(client_msg), 0)) == -1){
+					if ((bytes = recv(ready_fd->fd, client_msg, sizeof(client_msg), 0)) == -1){
 						fprintf(stderr, "recv failed, errno:%d, error:%s.\n", errno, strerror(errno));
 					}else if (bytes){
-						printf("msg from client on sock %d: ", p->fd);
+						printf("msg from client on sock %d: ", ready_fd->fd);
+						fflush(stdout);
 						while (write(STDOUT_FILENO, client_msg, bytes) == -1){
 							if (errno == EINTR) continue;
 							else p_err("write client msg to stdout failed.\n");
 						}
 						printf("\n");
 						printf("send to other clients.\n");
-						for (struct pollfd *q; q < poll_fds + poll_fds_num; q++){
-							if (q->fd > 0 && q->fd != listen_fd && q->fd != p->fd){
+						for (struct pollfd *q = poll_fds; q < poll_fds + poll_fds_num; q++){
+							if (q->fd >= 0 && q->fd != listen_fd && q->fd != ready_fd->fd){
 									if (send(q->fd, client_msg, bytes, 0) == -1) fprintf(stderr, "send msg to sock %d failed.\n", q->fd);
 							}
 						}
 					}else{
-						printf("select server: socket %d hung up.\n", p->fd);
-						if (close(p->fd) == -1) p_err("close socket failed.");
-						p->fd = -1;
+						printf("select server: socket %d hung up.\n", ready_fd->fd);
+						if (close(ready_fd->fd) == -1) p_err("close socket failed.");
+						ready_fd->fd = -1;
 						nfds--;
 					}
 				}

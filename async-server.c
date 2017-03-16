@@ -4,12 +4,32 @@
 #define CLIENT_MESSAGE_MAX_LEN 512
 #define DEFAULT_PORT "3838"
 #define DEFAULT_ADDR NULL
+#define INITIAL_FDS_NUM 256
+#define IO_BUFFER_LEN 256
+
+enum rwop {unused, read_pending, write_pending};
+struct aiocb_t{
+	struct aiocb aiocb;
+	enum rwop op;
+}
+struct aiocbs{
+	int fd;
+	struct aiocb_t read_aio;
+	struct aiocb_t write_aio;
+}
+static struct aiocb_t *aios;
+static size_t aios_num;
+static size_t aios_size;
+static pthread_mutex_t mutex;
 
 void init_addrinfo (struct addrinfo *addr);
-void sig_chld (int signo);
-void *thread (void *arg);
+void sig_aio_read (int signo, siginfo_t *info, void *arg);
+void sig_aio_write (int signo, siginfo_t *info, void *arg);
+void *aio_write_thread (void *arg);
+void *aio_read_thread (void *arg)
 void make_thread (pthread_t *tid, void *(*thread)(void *arg), void *arg);
 void *get_in_addr (struct sockaddr *sa);
+void init_mutex (void);
 
 int main (int argc, char *argv[])
 {
@@ -36,7 +56,6 @@ int main (int argc, char *argv[])
 	}
 
 	struct addrinfo *p;
-	int listen_fd;
 	for (p = servinfo; p != NULL; p = p->ai_next){
 		if ((listen_fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1){
 			fprintf(stderr, "socket failed.\n");
@@ -66,83 +85,26 @@ int main (int argc, char *argv[])
 	freeaddrinfo(servinfo);
 	if (listen(listen_fd, MAX_CONNECT_NUM) == -1) p_err("listen failed.");
 
-	struct sigaction act;
-	memset(&act, 0, sizeof(act));
-	act.sa_handler = sig_chld;
-	if (sigaction(SIGCHLD, &act, NULL) == -1) p_err("sigaction failed.");
 	sigset_t mask;
-	sigemptyset(&mask);
-	sigaddset(&mask, SIGCHLD);
+	sigfillset(&mask);
 	if (ret = pthread_sigmask(SIG_BLOCK, &mask, NULL)) p_err("pthread_sigmask failed.");
-	pthread_t tid;
-	make_thread(&tid, thread, (void*)0); //thread to process sigchld
+	init_mutex();
+	make_thread(&tid, aio_read_thread, (void*)read_thread);
+	make_thread(&tid, aio_write_thread, (void*)write_thread);
 
 	printf("select server waiting for connection...\n");
 	struct sockaddr_storage client_addr;
 	char client_msg[CLIENT_MESSAGE_MAX_LEN];
 	socklen_t client_addrlen;
-	fd_set fds, read_fds;
-	int read_fd_max, new_fd;
+	int new_fd;
 	client_addrlen = sizeof(client_addr);
-	FD_ZERO(&fds);
-	FD_ZERO(&read_fds);
-	FD_SET(listen_fd, &fds);
-	int ready_num;
-	read_fd_max = listen_fd;
 	while (1){
-		read_fds = fds;
-		while ((ready_num = select(read_fd_max + 1, &read_fds, NULL, NULL, NULL)) == -1){
-			if (errno == EINTR) continue;
-			else perror("select failed.");
+		if ((new_fd = accept(listen_fd, (struct sockaddr*)&client_addr, &client_addrlen)) == -1){
+			fprintf(stderr, "accept failed, errno:%d, error:%s\n", errno, strerror(errno));
+			continue;
 		}
-		for (int i = 0; i <= read_fd_max && ready_num > 0; i++){
-			if (FD_ISSET(i, &read_fds)){
-				ready_num--;
-				if (i == listen_fd){
-					if ((new_fd = accept(listen_fd, (struct sockaddr*)&client_addr, &client_addrlen)) == -1){
-						fprintf(stderr, "accept failed, errno:%d, error:%s\n", errno, strerror(errno));
-						continue;
-					}else{
-						FD_SET(new_fd, &fds);
-						if (new_fd > read_fd_max) read_fd_max = new_fd;
-						printf("select server: new connection from %s on sockfd %d.\n", inet_ntop(client_addr.ss_family, get_in_addr((struct sockaddr*)&client_addr), lexical_addr, INET6_ADDRSTRLEN), new_fd);
-					}
-				}else{
-					ssize_t bytes;
-					if ((bytes = recv(i, client_msg, sizeof(client_msg), 0)) == -1){
-						fprintf(stderr, "recv failed, errno:%d, error:%s.\n", errno, strerror(errno));
-					}else if (bytes){
-						printf("msg from client on sock %d: ", i);
-						while (write(STDOUT_FILENO, client_msg, bytes) == -1){
-							if (errno == EINTR) continue;
-							else p_err("write client msg to stdout failed.\n");
-						}
-						printf("\n");
-						printf("send to other clients.\n");
-						for (int j = 0; j <= read_fd_max; j++){
-							if (FD_ISSET(j, &fds)){
-								printf("i:%d, j:%d, listen_fd:%d, maxfd:%d.\n", i, j, listen_fd, read_fd_max);
-								if (j != listen_fd && j != i){
-									if (send(j, client_msg, bytes, 0) == -1) fprintf(stderr, "send msg to sock %d failed.\n", j);
-								}else continue;
-							}
-						}
-					}else{
-						printf("select server: socket %d hung up.\n", i);
-						if (close(i) == -1) p_err("close socket failed.");
-						FD_CLR(i, &fds);
-						if (i == read_fd_max){
-							i = 0;
-							for (int k = 0; k < read_fd_max; k++){
-								if (k != read_fd_max && FD_ISSET(k, &fds) && k > i) i = k;
-							}
-							read_fd_max = i;
-						}
-					}
-				}
-			}
-		}
-
+		////////////////
+		printf("select server: new connection from %s on sockfd %d.\n", inet_ntop(client_addr.ss_family, get_in_addr((struct sockaddr*)&client_addr), lexical_addr, INET6_ADDRSTRLEN), new_fd);
 	}
 
 	return 0;
@@ -160,19 +122,38 @@ void init_addrinfo (struct addrinfo *addr)
 	addr->ai_next= NULL;
 }
 
-void sig_chld (int signo)
-{
-	while (waitpid(-1, NULL, WNOHANG) > 0) ;
-}
-
-void *thread (void *arg)
+void *aio_read_thread (void *arg)
 {
 	sigset_t mask;
 	int ret;
+	struct sigaction act;
 
-	sigemptyset(&mask);
-	sigaddset(&mask, SIGCHLD);
-	if (ret = pthread_sigmask(SIG_UNBLOCK, &mask, NULL)) p_err("pthread_sigmask failed.");
+	sigfillset(&mask);
+	sigdelset(&mask, SIGRTMIN);
+	if (ret = pthread_sigmask(SIG_SETMASK, &mask, NULL)) t_err("pthread_sigmask failed.", ret);
+	memset(&act, 0, sizeof(act));
+	act.sa_sigaction = sig_aio_read;
+	if (sigaction(SIGRTMIN, &act, NULL) == -1) p_err("sigaction failed.");
+
+	while (1){
+		pause();
+	}
+	pthread_exit(0);
+}
+
+void *aio_write_thread (void *arg)
+{
+	sigset_t mask;
+	int ret;
+	struct sigaction act;
+
+	sigfillset(&mask);
+	sigdelset(&mask, SIGRTMAX);
+	if (ret = pthread_sigmask(SIG_SETMASK, &mask, NULL)) t_err("pthread_sigmask failed.", ret);
+	memset(&act, 0, sizeof(act));
+	act.sa_sigaction = sig_aio_write;
+	if (sigaction(SIGRTMAX, &act, NULL) == -1) p_err("sigaction failed.");
+
 	while (1){
 		pause();
 	}
@@ -193,4 +174,101 @@ void *get_in_addr (struct sockaddr *sa)
 {
 	if (sa->sa_family == AF_INET) return &(((struct sockaddr_in*)sa)->sin_addr);
 	else return &(((struct sockaddr_in6*)sa)->sin6_addr);
+}
+
+void init_mutex (void)
+{
+	int ret;
+	pthread_mutexattr_t attr;
+	if (ret = pthread_mutexattr_init(&attr)) t_err("pthread_mutexattr_init failed.", ret);
+	pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);
+	if (ret = pthread_mutex_init(&mutex, &attr)) t_err("pthread_mutex_init failed.", ret);
+	pthread_mutexattr_destroy(&attr);
+}
+
+void sig_aio_read (int signo, siginfo_t *info, void *arg)
+{
+	int ret;
+	size_t pos = (size_t)arg;
+
+	if ((ret = aio_error(&aiocb_t->aiocb)) == EINPROGRESS || ret == ECANCELED) return;
+	else if (ret){
+		if (ret == EINTR){
+			if (signo == SIGRTMIN) aio_read(&aios[pos].read_aio);
+			else aio_write(&aio[pos].write_aio);
+			return 0;
+		}
+		else{
+			fprintf("aio_error indicate %s failed on fd %d, errno:%d, error:%s, close it\n", signo == SIGRTMIN ? "read" : "write", aiocb_t->aiocb.aio_fildes, ret, strerror(ret));
+		}
+	}
+	else if (aiocb_t->type == aio_type_write) return;
+	ssize_t bytes;
+	if ((bytes = aio_return(aiocb_t->read_aiocb)) == -1) p_err("aio_return failed on reading sock %d, errno:%d, error:%s.\n", aiocb_t->aiocb.aio_fildes, errno, error);
+	else if (bytes == 0){
+		printf("aio server: socket %d hung up.\n", aiocb_t->aiocb.aio_fildes);
+		del_from_fds(aiocb_t->aiocb.aio_fildes);
+	}else{
+		send_to_fds (, );
+	}
+}
+
+void del_from_fds (int fd)
+{
+	int ret;
+	if (ret = pthread_mutex_lock(&mutex)) t_err("pthread_mutex_lock failed.", ret);
+	int num = fds_num;
+	for (size_t i = 0; i < fds_size; i++){
+		if (fds[i].fd == fd){
+		}
+	}
+	pthread_mutex_unlock(&mutex);
+}
+
+void send_to_fds (int fd, const char *s)
+{
+	int ret;
+
+	if (ret = pthread_mutex_lock(&mutex)) t_err("pthread_mutex_lock failed.", ret);
+	int num = fds_num;
+	for (size_t i = 0; i < fds_size && num > 0; i++){
+		if (fds[i].fd != -1){
+			num--;
+			if (fds[i].fd != fd && fds[i].fd != listen_fd){
+				fds[i].write_aiocb = s;
+				if (aio_write(fds[i].write_aiocb) == -1) fprintf(stderr, "aio_write queued failed, errno:%d, error:%s", errno, strerror(errno));
+			}
+		}
+	}
+	pthread_mutex_unlock(&mutex);
+}
+
+int allocate_new_fd (struct fds_t *fds_t, int fd)
+{
+	fds_t->fd = fd;IO_BUFFER_LEN
+	if ((fds_t->read_aiocb = malloc(sizeof(struct aiocb))) == NULL) return 1;
+	if ((fds_t->write_aiocb = malloc(sizeof(struct aiocb))) == NULL) return 1;
+	if ((fds_t->read_aiocb.aio_buf = malloc(IO_BUFFER_LEN)) == NULL) return 2;
+	if ((fds_t->write_aiocb.aio_buf = malloc(IO_BUFFER_LEN)) == NULL) return 2;
+	fds_t->read_aiocb.aio_fildes = fd;
+	fds_t->write_aiocb.aio_fildes = fd;
+	fds_t->read_aiocb.aio_offset = fd;
+	fds_t->write_aiocb.aio_offset = fd;
+	fds_t->read_aiocb.aio_nbytes = IO_BUFFER_LEN;
+	fds_t->write_aiocb.aio_nbytes = IO_BUFFER_LEN;
+	fds_t->read_aiocb.aio_reqprio = 0;
+	fds_t->write_aiocb.aio_reqprio = 0;
+	fds_t->read_aiocb.aio_lio_opcode = 0;
+	fds_t->write_aiocb.aio_lio_opcode = 0;
+	fds_t->read_aiocb.aio_sigevent.sigev_notify = SIGEV_SIGNAL;
+	fds_t->write_aiocb.aio_sigevent.sigev_notify = SIGEV_SIGNAL;
+	fds_t->read_aiocb.aio_sigevent.sigev_signo = SIGRTMIN;
+	fds_t->write_aiocb.aio_sigevent.sigev_signo = SIGRTMAX;
+	fds_t->read_aiocb.aio_sigevent.sigev_value.sival_ptr = fds_t;
+	fds_t->write_aiocb.aio_sigevent.sigev_value.sival_ptr = fds_t;
+	fds_t->read_aiocb.aio_sigevent.sigev_notify_function = NULL;
+	fds_t->write_aiocb.aio_sigevent.sigev_notify_function = NULL;
+	fds_t->read_aiocb.aio_sigevent.sigev_notify_attributes = NULL;
+	fds_t->write_aiocb.aio_sigevent.sigev_notify_attributes = NULL;
+	return 0;
 }
